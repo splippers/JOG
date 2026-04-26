@@ -1,0 +1,22 @@
+# FOG version = tag after the final colon (matches upstream FOG Project dev branch
+# builds published by fog-docker). Override in .env: FOG_DOCKER_IMAGE=...
+# Releases: https://github.com/88fingerslukee/fog-docker/releases
+services:
+  fog:
+    image: ${FOG_DOCKER_IMAGE:-ghcr.io/88fingerslukee/fog-docker:fog-1.5.10.1826}
+    container_name: jog-fog
+    privileged: true
+    network_mode: "host"
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - fog_images:/images
+      - fog_mysql:/var/lib/mysql
+      - fog_logs:/var/log
+
+volumes:
+  fog_images:
+  fog_mysql:
+  fog_logs:
+

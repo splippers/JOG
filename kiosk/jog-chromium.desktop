@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=JOG Chromium
+Comment=FOG UI + imaging/system status tabs
+Exec=/usr/local/bin/chromium-jog.sh
+X-GNOME-Autostart-enabled=true
+Terminal=false

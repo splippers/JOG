@@ -1,0 +1,9 @@
+# Install to /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
+# Replace USERNAME with a dedicated local account (e.g. jog).
+#
+# This boots the laptop straight into a graphical session so Chromium autostart runs.
+
+[Seat:*]
+autologin-user=USERNAME
+autologin-user-timeout=0
+user-session=ubuntu
