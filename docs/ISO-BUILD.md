@@ -21,19 +21,40 @@ From the JOG repo:
 ./installer/fetch-ubuntu-live-server-iso.sh
 ```
 
+This script is **hash-aware**:
+
+- If the ISO already exists, it verifies it against Canonical’s published `SHA256SUMS` and **skips** downloading when it matches.
+- If the checksum does not match, it deletes the file and re-downloads.
+
 Writes `installer/ubuntu-26.04-live-server-amd64.iso` (override path: `./installer/fetch-ubuntu-live-server-iso.sh /path/to/out.iso`).
 
 ## 2) Build the CIDATA seed ISO
 
 ```bash
-sudo apt install -y cloud-image-utils xorriso   # cloud-localds preferred
-cd installer/autoinstall
-./render-user-data.sh 'your-temporary-install-password'
-cd ..
-./build-cidata-seed-iso.sh
+sudo apt update
+sudo apt install -y cloud-image-utils xorriso openssl curl
+
+# Render autoinstall config (choose a temporary install password)
+( cd installer/autoinstall && ./render-user-data.sh 'TEMP-PASSWORD-HERE' )
+
+# Build the CIDATA seed ISO
+./installer/build-cidata-seed-iso.sh
 ```
 
 Produces **`installer/jog-autoinstall-seed.iso`**. If `cloud-localds` is installed, the seed is built the same way as in the [Ubuntu autoinstall quick start](https://ubuntu.com/server/docs/install/autoinstall-quickstart#using-another-volume-to-provide-the-autoinstall-configuration); otherwise the script falls back to `xorriso`.
+
+## Re-run “prep” end-to-end (both ISOs)
+
+If you just want to regenerate both ISO files in one go:
+
+```bash
+cd /mnt/EDDIE-SANDIEGO/Projects/JOG
+sudo apt update
+sudo apt install -y cloud-image-utils xorriso openssl curl
+./installer/fetch-ubuntu-live-server-iso.sh
+( cd installer/autoinstall && ./render-user-data.sh 'TEMP-PASSWORD-HERE' )
+./installer/build-cidata-seed-iso.sh
+```
 
 ## 3) Boot the installer (VM or bare metal)
 

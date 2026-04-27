@@ -73,6 +73,17 @@ docker compose up -d
 - **Unattended OS layer**: `installer/autoinstall/` targets **Ubuntu Server 26.04** live-server + Subiquity autoinstall (Docker, dnsmasq, git, clones JOG to `/opt/JOG`). Fetch the GA ISO with `installer/fetch-ubuntu-live-server-iso.sh`, build the **CIDATA** seed with `installer/build-cidata-seed-iso.sh` after `./installer/autoinstall/render-user-data.sh`. Full procedure: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
 - **Operator questions (hostname, IP ranges, USB NIC, passwords, FOG pin)**: run **`sudo jog-install-wizard`** after first boot (dialog TUI). A reminder is shown from `/etc/profile.d/jog-remind.sh` until `/etc/jog/wizard.done` exists.
 
+Re-run prep (Ubuntu ISO + seed ISO):
+
+```bash
+cd /mnt/EDDIE-SANDIEGO/Projects/JOG
+sudo apt update
+sudo apt install -y cloud-image-utils xorriso openssl curl
+./installer/fetch-ubuntu-live-server-iso.sh
+( cd installer/autoinstall && ./render-user-data.sh 'TEMP-PASSWORD-HERE' )
+./installer/build-cidata-seed-iso.sh
+```
+
 ## Multi-JOG / saturated networks
 
 See [docs/CLUSTER.md](docs/CLUSTER.md). Short version: **do not** put multiple DHCP servers on the same L2 with overlapping pools; scale with **separate imaging segments**, **FOG storage nodes**, **image rsync** (`scripts/jog-sync-images-from-primary.sh`), or **fatter uplinks**.
