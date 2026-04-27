@@ -2,7 +2,7 @@
 set -euo pipefail
 exec 2>>/tmp/jog_error.log
 
-# Interactive setup for JOG (hostname, imaging network, DHCP, admin user, FOG pin).
+# Interactive setup for JOG (hostname, imaging network, DHCP, admin user, optional EFI staging).
 # Requires: dialog, root. Idempotent-ish: re-run to overwrite generated configs.
 
 : "${DIALOG:=dialog}"
@@ -18,7 +18,7 @@ if [[ "$SCRIPT_DIR" == "/usr/local/sbin" || "$SCRIPT_DIR" == "/usr/local/bin" ]]
 else
   REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
-[[ -f "${REPO_ROOT}/docker-compose.yml" ]] || die "JOG repo not found at ${REPO_ROOT} (set JOG_REPO=...)"
+[[ -x "${REPO_ROOT}/install/fog-native-install.sh" ]] || die "JOG repo not found at ${REPO_ROOT} (set JOG_REPO=...)"
 
 if ! command -v dialog >/dev/null 2>&1; then
   apt-get update -qq
@@ -33,7 +33,6 @@ DEF_DHCP_START="10.99.0.100"
 DEF_DHCP_END="10.99.0.250"
 DEF_ROUTER="${DEF_IMAGING_IP}"
 DEF_NEXT="${DEF_IMAGING_IP}"
-DEF_FOG_IMAGE="ghcr.io/88fingerslukee/fog-docker:fog-1.5.10.1826"
 
 # --- Welcome ---
 $DIALOG --title "JOG setup" --msgbox \
@@ -43,29 +42,55 @@ This wizard will ask for:
   • system hostname
   • imaging network (USB NIC IP + DHCP range)
   • admin Linux account (username + password)
-  • FOG container image tag (upstream FOG version pin)
 
-Corporate LAN safety: DHCP is rendered ONLY on the USB interface you select.
+FOG runs natively under /opt/fog (official installer — not Docker).
 
-Press OK to continue." 18 70 || exit 0
+Corporate LAN safety: DHCP is rendered ONLY on the imaging interface you select.
+
+Strong recommendation: use a USB Gigabit Ethernet adapter for imaging. On Ubuntu those
+often appear as names starting with \"enx\" — not onboard eno/enp ports — which reduces
+accidentally plugging imaging into corporate Ethernet. You may still choose onboard if
+you confirm when prompted.
+
+Press OK to continue." 22 70 || exit 0
 
 # --- Hostname ---
 HOSTNAME="$($DIALOG --stdout --title "Hostname" --inputbox "Short hostname for this JOG laptop (DNS / UI):" 10 60 "${DEF_HOSTNAME}" || true)"
 [[ -n "${HOSTNAME// }" ]] || HOSTNAME="$DEF_HOSTNAME"
 
-# --- USB interface menu ---
+# --- Imaging NIC menu (USB recommended; onboard allowed with confirmation) ---
 mapfile -t IFACES < <(ip -br link show | awk '$1!="lo"{print $1}' | grep -v '^lo$' || true)
 [[ "${#IFACES[@]}" -gt 0 ]] || die "No non-loopback interfaces found."
 
 IFACE_ITEMS=()
 for i in "${!IFACES[@]}"; do
-  IFACE_ITEMS+=("$i" "${IFACES[$i]}")
+  nic="${IFACES[$i]}"
+  if [[ "$nic" =~ ^enx ]]; then
+    IFACE_ITEMS+=("$i" "$nic  — USB-style (recommended)")
+  else
+    IFACE_ITEMS+=("$i" "$nic  — likely onboard/built-in (confirm if intended)")
+  fi
 done
 
-IDX="$($DIALOG --stdout --title "USB imaging NIC" --menu \
-"Select the USB3 Ethernet adapter used ONLY for imaging (not onboard LAN, not WiFi):" 20 70 10 \
+while true; do
+  IDX="$($DIALOG --stdout --title "Imaging NIC (USB preferred)" --menu \
+"Choose the Ethernet interface used ONLY for PXE/imaging traffic.
+
+Prefer a USB adapter (names usually start with enx). Avoid using onboard Ethernet
+that might carry a corporate LAN unless you understand the risk.
+
+WiFi must NOT be used as the imaging NIC." 22 72 12 \
 "${IFACE_ITEMS[@]}" 2>&1)" || exit 0
-JOG_USB_IFACE="${IFACES[$IDX]}"
+  JOG_USB_IFACE="${IFACES[$IDX]}"
+  if [[ "$JOG_USB_IFACE" =~ ^enx ]]; then
+    break
+  fi
+  $DIALOG --title "Confirm non-USB-style NIC" --yesno \
+"You selected ${JOG_USB_IFACE}. JOG recommends a USB Gigabit adapter (typically enx…)
+for imaging so you are less likely to bridge imaging traffic onto a corporate LAN.
+
+Use ${JOG_USB_IFACE} anyway?" 14 72 && break
+done
 
 # --- Imaging IP / DHCP ---
 IMAGING_IP="$($DIALOG --stdout --title "Imaging IP" --inputbox "Static IP on the USB imaging link (laptop side):" 10 60 "${DEF_IMAGING_IP}" || true)"
@@ -77,10 +102,6 @@ NEXT_SERVER="$($DIALOG --stdout --title "NEXT SERVER (TFTP/PXE)" --inputbox "Mus
 
 NETMASK="255.255.255.0"
 if [[ "$PREFIX" == "24" ]]; then NETMASK="255.255.255.0"; fi
-
-FOG_WEB_HOST="$($DIALOG --stdout --title "FOG web host" --inputbox "Host/IP clients and Chromium use to open FOG (typical: same as imaging IP):" 10 60 "${IMAGING_IP}" || true)"
-
-FOG_DOCKER_IMAGE="$($DIALOG --stdout --title "FOG Docker image" --inputbox "Pinned fog-docker image (see github.com/88fingerslukee/fog-docker/releases):" 12 70 "${DEF_FOG_IMAGE}" || true)"
 
 # --- Cluster (optional) ---
 CLUSTER_MODE="$($DIALOG --stdout --title "Cluster mode" --menu \
@@ -99,8 +120,6 @@ fi
 ADMIN_USER="$($DIALOG --stdout --title "Admin username" --inputbox "Linux account for kiosk login + sudo (lowercase, no spaces):" 10 60 "jogadmin" || true)"
 [[ "$ADMIN_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "Invalid username"
 
-getent group docker >/dev/null 2>&1 || groupadd docker 2>/dev/null || true
-
 PASS1="$($DIALOG --stdout --title "Password" --passwordbox "Password for ${ADMIN_USER}:" 10 60 || true)"
 PASS2="$($DIALOG --stdout --title "Password" --passwordbox "Confirm password:" 10 60 || true)"
 [[ -n "$PASS1" && "$PASS1" == "$PASS2" ]] || die "Passwords missing or mismatch"
@@ -111,8 +130,6 @@ USB_IFACE=$JOG_USB_IFACE
 imaging=${IMAGING_IP}/${PREFIX}
 dhcp=${DHCP_START}-${DHCP_END}
 router=$ROUTER next_server=$NEXT_SERVER
-fog_web=$FOG_WEB_HOST
-fog_image=$FOG_DOCKER_IMAGE
 cluster=$CLUSTER_MODE
 primary_ssh=$PRIMARY_SSH
 admin=$ADMIN_USER"
@@ -128,7 +145,7 @@ hostnamectl set-hostname "$HOSTNAME"
 
 # Linux user
 if ! id -u "$ADMIN_USER" >/dev/null 2>&1; then
-  useradd -m -s /bin/bash -G sudo,docker "$ADMIN_USER" 2>/dev/null || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
+  useradd -m -s /bin/bash -G sudo "$ADMIN_USER" 2>/dev/null || useradd -m -s /bin/bash -G sudo "$ADMIN_USER"
 fi
 echo "${ADMIN_USER}:${PASS1}" | chpasswd
 
@@ -142,6 +159,7 @@ JOG_DHCP_NETMASK=${NETMASK}
 JOG_DHCP_LEASE_HOURS=12
 JOG_DHCP_ROUTER=${ROUTER}
 JOG_NEXT_SERVER=${NEXT_SERVER}
+JOG_DHCP_BOOTFILE=snponly.efi
 JOG_FOG_URL=http://127.0.0.1/
 JOG_FOG_TASKS_URL=http://127.0.0.1/fog/management/index.php
 JOG_STATUS_URL=file:///var/lib/jog/status/index.html
@@ -165,15 +183,6 @@ network:
 EOF
 chmod 0600 /etc/netplan/90-jog-wizard.yaml
 
-# Docker compose env for FOG stack (used from JOG repo directory)
-cat >"${REPO_ROOT}/.env" <<EOF
-FOG_DOCKER_IMAGE=${FOG_DOCKER_IMAGE}
-FOG_WEB_HOST=${FOG_WEB_HOST}
-FOG_DB_ROOT_PASSWORD=$(openssl rand -base64 24)
-TZ=UTC
-EOF
-chmod 0600 "${REPO_ROOT}/.env"
-
 if command -v netplan >/dev/null 2>&1; then
   netplan generate
   netplan apply || log "netplan apply returned non-zero; check conflicts with other netplan files"
@@ -189,8 +198,8 @@ if [[ -d /run/systemd/system ]]; then
   systemctl enable --now jog-refresh-status.timer 2>/dev/null || true
 fi
 
-if command -v jog-render-dnsmasq.sh >/dev/null 2>&1 || [[ -x /usr/local/bin/jog-render-dnsmasq.sh ]]; then
-  /usr/local/bin/jog-render-dnsmasq.sh || true
+if [[ -x /usr/local/sbin/jog-provision-stack.sh ]]; then
+  /usr/local/sbin/jog-provision-stack.sh || log "jog-provision-stack returned non-zero"
 fi
 
 touch /etc/jog/wizard.done
@@ -198,10 +207,15 @@ touch /etc/jog/wizard.done
 $DIALOG --title "Done" --msgbox \
 "JOG wizard finished.
 
+Automated for you:
+  • Signed Ubuntu EFI binaries → /tftpboot/ubuntu-signed/ (if apt could reach the mirror)
+  • dnsmasq config rendered and service restarted
+  • Native FOG install started in the background (long; needs Internet)
+
+Watch progress: journalctl -fu jog-fog-install.service
+
 Next steps:
   1) Review /etc/netplan/ — add WiFi with low route-metric if not already configured.
-  2) cd ${REPO_ROOT} && docker compose pull && docker compose up -d
-  3) sudo systemctl restart dnsmasq
-  4) Reboot if you changed hostname or netplan.
+  2) Reboot if you changed hostname or netplan (FOG keeps running after reboot).
 
-Cluster: read docs/CLUSTER.md and run scripts/jog-sync-images-from-primary.sh on edge nodes." 22 70
+Cluster: read docs/CLUSTER.md and run scripts/jog-sync-images-from-primary.sh on edge nodes." 24 72

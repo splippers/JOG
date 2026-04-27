@@ -21,14 +21,13 @@ TMP="${OUT}.tmp"
   echo "</pre><h2>dnsmasq</h2><pre>"
   systemctl is-active dnsmasq 2>/dev/null || true
   systemctl status dnsmasq --no-pager -l 2>/dev/null | head -n 20 || true
-  echo "</pre><h2>Docker (FOG stack)</h2><pre>"
-  if command -v docker >/dev/null 2>&1; then
-    docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
-    echo ""
-    docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}' 2>/dev/null || true
-  else
-    echo "docker not in PATH"
-  fi
+  echo "</pre><h2>FOG services (native /opt/fog)</h2><pre>"
+  for u in apache2 mariadb tftpd-hpa; do
+    echo -n "$u: "
+    systemctl is-active "$u" 2>/dev/null || echo "(stopped or not installed)"
+  done
+  echo ""
+  ss -ltnp 2>/dev/null | grep -E ':80|:443' | head -n 10 || true
   echo "</pre><h2>Listening UDP (69 TFTP / imaging-related)</h2><pre>"
   ss -lunp 2>/dev/null | head -n 40 || true
   echo "</pre></body></html>"

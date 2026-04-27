@@ -3,7 +3,7 @@
 # Goals:
 # - USB3 NIC: static IP on isolated imaging subnet only (no default route here).
 # - Onboard Ethernet: unplugged or disabled on imaging days (recommended).
-# - WiFi: default route + DNS for apt/docker (lower metric than any wired corporate link).
+# - WiFi: default route + DNS for apt (lower metric than any wired corporate link).
 
 network:
   version: 2

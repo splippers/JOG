@@ -30,7 +30,7 @@ Operational checklist:
 Recommended split:
 
 - **USB**: static IP on an **isolated** RFC1918 subnet (example `10.99.0.1/24`) used only for PXE clients. **No default route** on this interface.
-- **WiFi**: DHCP to your “unfiltered” SSID, **default route + DNS** with a **low route metric** so `apt`, `docker pull`, and browser traffic use WiFi.
+- **WiFi**: DHCP to your “unfiltered” SSID, **default route + DNS** with a **low route metric** so `apt`, browser traffic, and FOG’s installer use WiFi.
 
 Start from `netplan/99-jog-usb.yaml.example`, copy to `/etc/netplan/`, adjust interface names, then `sudo netplan apply`.
 
@@ -46,32 +46,27 @@ Install:
 
 - `sudo ./install/jog-install.sh`
 - Enable **graphical autologin** for a dedicated user (example in `lightdm/50-jog-autologin.conf.example`).
-- Put that user in the **`docker`** group if you want `docker stats` in the status tab without sudo.
+Native FOG installs Apache/MariaDB on the host; the status tab shows those services instead of containers.
 
 Autostart is shipped as `/etc/xdg/autostart/jog-chromium.desktop` pointing at `/usr/local/bin/chromium-jog.sh`.
 
-## FOG in Docker (laptop)
+## FOG on the host (`/opt/fog`)
 
-`docker-compose.yml` uses the community-maintained **`ghcr.io/88fingerslukee/fog-docker`** image ([documentation](https://88fingerslukee.github.io/fog-docker/), [source](https://github.com/88fingerslukee/fog-docker/)). That project publishes **versioned tags that match upstream FOG Project builds** (for example `fog-1.5.10.1826` ships FOG **1.5.10.1826**). JOG **pins** that tag in `docker-compose.yml` / `.env.example` so “current FOG” means a **deliberate upgrade** when you bump `FOG_DOCKER_IMAGE`, not whatever `:latest` happened to be on the day you pulled.
-
-To move to a newer FOG: open [fog-docker releases](https://github.com/88fingerslukee/fog-docker/releases), pick the newest `fog-x.y.z.*` tag, set it in `.env`:
+JOG installs the **official [FOG Project](https://fogproject.org/)** server natively under **`/opt/fog`** using **`install/fog-native-install.sh`** (wraps `bin/installfog.sh`). That pulls Apache, PHP, MariaDB, TFTP, NFS, etc. onto Ubuntu — no Docker.
 
 ```bash
-FOG_DOCKER_IMAGE=ghcr.io/88fingerslukee/fog-docker:fog-1.5.10.1826
+sudo jog-install-wizard    # NIC + IPs + EFI → /tftpboot/ubuntu-signed + dnsmasq + starts FOG in background
+journalctl -fu jog-fog-install.service   # optional: watch native FOG install progress
 ```
+Manual rerun (e.g. edited `/etc/jog/jog.env`): **`sudo jog-provision-stack.sh`**. Low-level installer: **`sudo fog-native-install.sh`**.
 
-Then `docker compose pull && docker compose up -d`.
-
-```bash
-cp .env.example .env
-# set FOG_WEB_HOST to the USB imaging IP (e.g. 10.99.0.1) or hostname clients use
-docker compose up -d
-```
+FOG owns **UDP/69 (TFTP)**; JOG’s **dnsmasq** provides **DHCP only** on the USB imaging NIC and advertises **`dhcp-boot`** / **next-server** toward FOG’s IP (see `scripts/jog-render-dnsmasq.sh`). Pin the Git branch with **`FOG_GIT_REF`** in `/opt/JOG/.env` if you need a specific release line.
 
 ## ISO install + first-boot wizard
 
-- **Unattended OS layer**: `installer/autoinstall/` targets **Ubuntu Server 26.04** live-server + Subiquity autoinstall (Docker, dnsmasq, git, clones JOG to `/opt/JOG`). Fetch the GA ISO with `installer/fetch-ubuntu-live-server-iso.sh`, build the **CIDATA** seed with `installer/build-cidata-seed-iso.sh` after `./installer/autoinstall/render-user-data.sh`. Full procedure: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
-- **Operator questions (hostname, IP ranges, USB NIC, passwords, FOG pin)**: run **`sudo jog-install-wizard`** after first boot (dialog TUI). A reminder is shown from `/etc/profile.d/jog-remind.sh` until `/etc/jog/wizard.done` exists.
+- **Unattended OS layer**: `installer/autoinstall/` targets **Ubuntu Server 26.04** live-server + Subiquity autoinstall (dnsmasq, git, clones JOG to `/opt/JOG`). Fetch the GA ISO with `installer/fetch-ubuntu-live-server-iso.sh`, build the **CIDATA** seed with `installer/build-cidata-seed-iso.sh` after `./installer/autoinstall/render-user-data.sh`. Full procedure: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
+- **One ISO (Hyper-V lab)**: build `installer/build-hyperv-single-iso.sh` to remaster the live-server image with embedded nocloud + first-boot automation; attach that single ISO to a new **Gen2** VM. No second seed disc, no `jog-install-wizard` for defaults-on-a-single-NIC scenarios. Details: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
+- **Operator questions (hostname, IP ranges, USB NIC, passwords)**: run **`sudo jog-install-wizard`** after first boot (dialog TUI), unless you used the Hyper-V single-ISO path. The wizard applies **EFI staging**, **dnsmasq**, and **starts native FOG** (`jog-provision-stack.sh`). Shell reminders reference **`/etc/jog/wizard.done`** and **`/etc/jog/fog-native.done`** (`/etc/profile.d/jog-remind.sh`).
 
 Re-run prep (Ubuntu ISO + seed ISO):
 
@@ -100,14 +95,11 @@ sudo netplan apply
 sudo ./install/jog-install.sh
 sudo nano /etc/jog/jog.env
 
-# 3) DHCP/TFTP (dnsmasq) — renders USB-only config then starts
-sudo apt install -y dnsmasq
-sudo jog-render-dnsmasq.sh
-sudo systemctl restart dnsmasq
+# 3) Wizard-driven install (recommended): applies dnsmasq + EFI staging + starts FOG
+sudo jog-install-wizard
+# Or manual: edit /etc/jog/jog.env then: sudo jog-provision-stack.sh
 
-# 4) TFTP root: place ipxe.efi + kernels per your FOG/JOS layout under /srv/tftp
-
-# 5) Graphical autologin + reboot into UI
+# 4) Graphical autologin + reboot into UI
 sudo cp lightdm/50-jog-autologin.conf.example /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
 sudo nano /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
 ```
@@ -116,8 +108,11 @@ sudo nano /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
 
 | Path | Purpose |
 |------|---------|
-| `docker-compose.yml` | FOG stack (`fog-docker`) |
-| `.env.example` | Docker env template |
+| `install/fog-native-install.sh` | Clone FOG to `/opt/fog` and run official `installfog.sh` |
+| `scripts/jog-copy-signed-ubuntu-efi-to-tftpboot.sh` | Stage shim/grub signed EFI under `/tftpboot/ubuntu-signed/` |
+| `scripts/jog-provision-stack.sh` | EFI + dnsmasq + start FOG install (wizard / optional manual) |
+| `systemd/jog-fog-install.service` | One-shot native FOG via `jog-fog-install-once.sh` |
+| `.env.example` | Optional `FOG_GIT_REF` for pinning the fogproject clone |
 | `config/jog.env.example` | USB-only DHCP + kiosk URLs → `/etc/jog/jog.env` |
 | `scripts/jog-render-dnsmasq.sh` | Renders `/etc/dnsmasq.d/99-jog-imaging.conf` from `jog.env` |
 | `scripts/jog-refresh-status.sh` | Writes `/var/lib/jog/status/index.html` |

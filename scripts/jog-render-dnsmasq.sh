@@ -2,7 +2,7 @@
 set -e
 exec 2>>/tmp/jog_error.log
 
-# Renders dnsmasq config so DHCP/TFTP only binds to the USB imaging NIC.
+# Renders dnsmasq config so DHCP only binds to the USB imaging NIC (TFTP is FOG’s tftpd on :69).
 # Requires /etc/jog/jog.env (see config/jog.env.example).
 
 ERROR_LOG="/tmp/jog_error.log"
@@ -41,12 +41,10 @@ dhcp-range=${JOG_DHCP_START},${JOG_DHCP_END},${JOG_DHCP_NETMASK},${JOG_DHCP_LEAS
 dhcp-option=option:router,${JOG_DHCP_ROUTER}
 dhcp-option=option:dns-server,${JOG_NEXT_SERVER}
 
-# NEXT SERVER (siaddr) + boot file — required for iPXE / JOS
+# NEXT SERVER + PXE boot file — TFTP is served by FOG (tftpd-hpa from /opt/fog install), not dnsmasq,
+# so UDP/69 is not double-bound. Override filename for BIOS vs UEFI if needed.
 dhcp-option=option:tftp-server,${JOG_NEXT_SERVER}
-dhcp-boot=ipxe.efi,${JOG_NEXT_SERVER}
-
-enable-tftp
-tftp-root=/srv/tftp
+dhcp-boot=${JOG_DHCP_BOOTFILE:-snponly.efi},${JOG_NEXT_SERVER}
 EOF
 
 log "Wrote $OUT (interface=${JOG_USB_IFACE})"

@@ -23,15 +23,12 @@ autoinstall:
     layout:
       name: direct
   packages:
-    - docker.io
-    - docker-compose-plugin
     - dialog
     - dnsmasq
     - git
     - curl
     - openssl
   late-commands:
-    - curtin in-target --target=/target -- bash -lc 'getent group docker >/dev/null || groupadd docker; usermod -aG docker jogadmin || true'
     - curtin in-target --target=/target -- bash -lc 'git clone https://github.com/splippers/JOG.git /opt/JOG || (cd /opt/JOG && git pull || true)'
     - curtin in-target --target=/target -- install -m 0755 /opt/JOG/installer/jog-install-wizard.sh /usr/local/sbin/jog-install-wizard.sh
     - curtin in-target --target=/target -- install -m 0644 /opt/JOG/installer/motd/jog-remind.sh /etc/profile.d/jog-remind.sh

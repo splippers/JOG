@@ -4,10 +4,36 @@ JOG is pinned to **Ubuntu Server 26.04** (`installer/UBUNTU_RELEASE`). Use the *
 
 JOG ships two layers:
 
-1. **Unattended base OS** — autoinstall (`installer/autoinstall/`) installs Docker, dnsmasq, git, clones JOG to `/opt/JOG`, and drops helper units.
-2. **Interactive network + FOG** — after reboot, run **`sudo jog-install-wizard`** (dialog TUI). `/etc/profile.d/jog-remind.sh` nags until `/etc/jog/wizard.done` exists.
+1. **Unattended base OS** — autoinstall (`installer/autoinstall/`) installs dnsmasq, git, clones JOG to `/opt/JOG`, and drops helper units.
+2. **Interactive network + FOG** — after reboot, run **`sudo jog-install-wizard`** (dialog TUI), then **`sudo fog-native-install.sh`** for native FOG under `/opt/fog`. `/etc/profile.d/jog-remind.sh` nags until `/etc/jog/wizard.done` exists.
 
 Canonical reference (same major): [Autoinstall quick start](https://ubuntu.com/server/docs/install/autoinstall-quickstart) and Subiquity docs: [Providing autoinstall configuration](https://canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html).
+
+## Hyper-V Gen2 — one ISO (embedded nocloud)
+
+Use this when you attach **exactly one** virtual DVD (no second CIDATA disc) to a **Generation 2** VM.
+
+### Build the ISO (run on any machine with the JOG repo)
+
+From the **`JOG` repo root**:
+
+```bash
+sudo apt update
+sudo apt install -y xorriso openssl curl
+
+./installer/fetch-ubuntu-live-server-iso.sh
+./installer/build-hyperv-single-iso.sh 'YOUR-JOGADMIN-PASSWORD'
+```
+
+Outputs **`installer/ubuntu-26.04-live-server-jog-hyperv-amd64.iso`** (override with **`OUT_ISO=...`**). The builder **xorriso-clones** Canonical’s live-server ISO, patches **`/boot/grub/grub.cfg`** and **`/boot/grub/loopback.cfg`** so the installer gets **`autoinstall`** + **`ds=nocloud\;s=/cdrom/nocloud/`**, adds **`/nocloud/`** (rendered **`user-data.hyperv`**), and **`/installer-extra/`** first-boot helpers.
+
+Attach that ISO as the VM’s DVD, boot once, let autoinstall finish.
+
+### After the VM reboots
+
+A **systemd oneshot** applies **`10.99.0.1/24`**-style defaults on the **first Ethernet NIC**, runs **`jog-provision-stack.sh --blocking-fog`** (EFI → **`/tftpboot/ubuntu-signed`**, dnsmasq, **blocking** **`fog-native-install.sh`**), touches **`/etc/jog/wizard.done`** — no interactive **`jog-install-wizard`** on this path. For production laptops you still usually want the **two-ISO + wizard** flow so **`enx…`** USB imaging can be chosen explicitly.
+
+**Limits:** suited to a **single-NIC VM** on an isolated/lab switch. Physical laptops with **USB imaging + WiFi** should keep the **two-ISO + wizard** workflow below.
 
 ## Why two steps?
 
@@ -74,6 +100,6 @@ At the bootloader, edit the kernel command line and add **`autoinstall`** so the
 ## After first boot
 
 1. Log in as **`jogadmin`** (password from `./render-user-data.sh`).
-2. **`sudo jog-install-wizard`**
-3. `cd /opt/JOG && docker compose pull && docker compose up -d`
-4. `sudo systemctl restart dnsmasq`
+2. **`sudo jog-install-wizard`** — this also runs **`jog-provision-stack.sh`**: signed Ubuntu EFI → **`/tftpboot/ubuntu-signed`**, renders **dnsmasq**, restarts it, and **starts native FOG in the background** (`jog-fog-install.service`). Watch: **`journalctl -fu jog-fog-install.service`**.
+
+If you only edited **`/etc/jog/jog.env`**: **`sudo jog-provision-stack.sh`**
