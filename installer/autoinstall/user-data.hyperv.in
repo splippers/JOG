@@ -14,20 +14,22 @@ autoinstall:
   ssh:
     install-server: true
     allow-pw: true
+  # Hyper-V synthetic NIC: explicit DHCP so APT can reach mirrors during late-commands (git clone).
+  # Do not list autoinstall `packages:` here — without outbound HTTP/DNS that phase fails with exit 100.
+  # Prerequisite debs are installed early in jog-first-boot-unattended.sh (before imaging-only netplan).
   network:
     network:
       version: 2
-      ethernets: {}
+      ethernets:
+        hv-net:
+          optional: true
+          dhcp4: true
+          dhcp-identifier: mac
+          match:
+            driver: hv_netvsc
   storage:
     layout:
       name: direct
-  packages:
-    - dialog
-    - dnsmasq
-    - git
-    - curl
-    - openssl
-    - xorriso
   late-commands:
     - curtin in-target --target=/target -- bash -lc 'git clone --depth 1 https://github.com/splippers/JOG.git /opt/JOG || (cd /opt/JOG && git pull --ff-only || true)'
     - curtin in-target --target=/target -- env JOG_SKIP_SYSTEMD=1 bash /opt/JOG/install/jog-install.sh || true

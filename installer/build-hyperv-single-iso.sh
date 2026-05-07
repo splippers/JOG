@@ -80,16 +80,20 @@ patch_boot_files
 
 rm -f "$OUT_ISO"
 log "cloning ISO (xorriso map) -> ${OUT_ISO}"
+# -boot_image any keep breaks hybrid ISO boot: El Torito + GPT appended EFI partition
+# stay at old LBAs while mapped files shift the image, so UEFI loaders (Hyper-V Gen2)
+# see a corrupt GPT / wrong EFI img size ("could not find a valid bootloader").
+# replay re-applies the source ISO's boot layout after our -map changes (see xorriso(1)).
 xorriso \
   -indev "$SRC_ISO" \
   -outdev "$OUT_ISO" \
-  -boot_image any keep \
   -map "$GRUB_PATCH" /boot/grub/grub.cfg \
   -map "$LOOP_PATCH" /boot/grub/loopback.cfg \
   -map "${AUTO}/user-data.hyperv" /nocloud/user-data \
   -map "$META" /nocloud/meta-data \
   -map "${EXTRA}/jog-first-boot-unattended.sh" /installer-extra/jog-first-boot-unattended.sh \
-  -map "${EXTRA}/jog-first-boot-unattended.service" /installer-extra/jog-first-boot-unattended.service
+  -map "${EXTRA}/jog-first-boot-unattended.service" /installer-extra/jog-first-boot-unattended.service \
+  -boot_image any replay
 
 [[ -s "$OUT_ISO" ]] || { log "output ISO missing or empty"; exit 1; }
 

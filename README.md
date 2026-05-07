@@ -34,21 +34,19 @@ Recommended split:
 
 Start from `netplan/99-jog-usb.yaml.example`, copy to `/etc/netplan/`, adjust interface names, then `sudo netplan apply`.
 
-### 3) Chromium “kiosk” with FOG + stats tabs
+### 3) Chromium “kiosk” with FOG + stats tabs (X11 — reliable on Intel laptops)
 
-JOG is not a single-URL `--kiosk` fullscreen (that hides tabs). Instead it launches **maximized Chromium** with multiple tabs:
+JOG is not a single-URL `--kiosk` fullscreen (that hides tabs). **`kiosk/chromium-jog.sh`** launches **maximized Chromium** with:
 
-1. FOG UI — `JOG_FOG_URL` (default `http://127.0.0.1/`)
-2. FOG tasks / imaging view — `JOG_FOG_TASKS_URL` (optional; tune path for your FOG build)
-3. Local host dashboard — `file:///var/lib/jog/status/index.html` (refreshed every ~10s)
+1. FOG management — `JOG_FOG_URL` (default **`http://localhost/fog/management/`**)
+2. Optional extra FOG URL — `JOG_FOG_TASKS_URL` if set and different from `JOG_FOG_URL`
+3. Local dashboard — `file:///var/lib/jog/status/index.html` (status timer refreshes HTML)
 
-Install:
+On **Intel iGPU** laptops (e.g. Dell Latitude 3410), use **`sudo jog-setup-reliable-kiosk.sh jogadmin`** after **`install/jog-install.sh`** + **`jog-install-wizard`**. That installs **ubuntu-xorg + LightDM + Chromium**, writes **`lightdm/50-jog-autologin.conf.example`** into **`/etc/lightdm/lightdm.conf.d/`**, and avoids Wayland/session glitches by matching **`ubuntu-xorg`** with Chromium’s **`--ozone-platform=x11`** / **`GDK_BACKEND=x11`**. Optional **`JOG_CHROMIUM_RESTART=1`** in **`/etc/jog/jog.env`** restarts Chromium if it exits.
 
-- `sudo ./install/jog-install.sh`
-- Enable **graphical autologin** for a dedicated user (example in `lightdm/50-jog-autologin.conf.example`).
-Native FOG installs Apache/MariaDB on the host; the status tab shows those services instead of containers.
+Autostart: **`kiosk/jog-chromium.desktop`** → **`/usr/local/bin/chromium-jog.sh`**. Native FOG runs on the host; the status tab shows Apache/MariaDB/tftpd instead of containers.
 
-Autostart is shipped as `/etc/xdg/autostart/jog-chromium.desktop` pointing at `/usr/local/bin/chromium-jog.sh`.
+See **[docs/ISO-BUILD.md](docs/ISO-BUILD.md)** (graphical kiosk section) for the full command sequence.
 
 ## FOG on the host (`/opt/fog`)
 
@@ -64,9 +62,11 @@ FOG owns **UDP/69 (TFTP)**; JOG’s **dnsmasq** provides **DHCP only** on the US
 
 ## ISO install + first-boot wizard
 
-- **Unattended OS layer**: `installer/autoinstall/` targets **Ubuntu Server 26.04** live-server + Subiquity autoinstall (dnsmasq, git, clones JOG to `/opt/JOG`). Fetch the GA ISO with `installer/fetch-ubuntu-live-server-iso.sh`, build the **CIDATA** seed with `installer/build-cidata-seed-iso.sh` after `./installer/autoinstall/render-user-data.sh`. Full procedure: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
-- **One ISO (Hyper-V lab)**: build `installer/build-hyperv-single-iso.sh` to remaster the live-server image with embedded nocloud + first-boot automation; attach that single ISO to a new **Gen2** VM. No second seed disc, no `jog-install-wizard` for defaults-on-a-single-NIC scenarios. Details: [docs/ISO-BUILD.md](docs/ISO-BUILD.md).
-- **Operator questions (hostname, IP ranges, USB NIC, passwords)**: run **`sudo jog-install-wizard`** after first boot (dialog TUI), unless you used the Hyper-V single-ISO path. The wizard applies **EFI staging**, **dnsmasq**, and **starts native FOG** (`jog-provision-stack.sh`). Shell reminders reference **`/etc/jog/wizard.done`** and **`/etc/jog/fog-native.done`** (`/etc/profile.d/jog-remind.sh`).
+Authoritative steps: **[docs/ISO-BUILD.md](docs/ISO-BUILD.md)**.
+
+- **Two ISOs (wizard on first boot)** — Canonical live-server ISO + **`jog-autoinstall-seed.iso`**: interactive **`jog-install-wizard`** after install (USB NIC hints, **`enx…`** recommended). Then **`jog-setup-reliable-kiosk.sh`** for **X11 + LightDM + Chromium**.
+- **One ISO (Hyper-V / lab VM)** — **`installer/build-hyperv-single-iso.sh`** produces **`installer/ubuntu-26.04-live-server-jog-hyperv-amd64.iso`**: embedded nocloud + unattended first-boot (**`jog-provision-stack.sh --blocking-fog`**). No wizard; optional kiosk on the VM with **`jog-setup-reliable-kiosk.sh`** after install.
+- **Wizard flow** applies **EFI staging**, **dnsmasq**, **`jog-provision-stack.sh`**, and starts **`jog-fog-install.service`**. Reminders: **`/etc/profile.d/jog-remind.sh`** tracks **`wizard.done`** and **`fog-native.done`**.
 
 Re-run prep (Ubuntu ISO + seed ISO):
 
@@ -99,9 +99,8 @@ sudo nano /etc/jog/jog.env
 sudo jog-install-wizard
 # Or manual: edit /etc/jog/jog.env then: sudo jog-provision-stack.sh
 
-# 4) Graphical autologin + reboot into UI
-sudo cp lightdm/50-jog-autologin.conf.example /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
-sudo nano /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
+# 4) Reliable X11 kiosk (Intel laptop / Latitude-class): LightDM + ubuntu-xorg + Chromium
+sudo jog-setup-reliable-kiosk.sh jogadmin && sudo reboot
 ```
 
 ## Repository layout
@@ -111,6 +110,7 @@ sudo nano /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
 | `install/fog-native-install.sh` | Clone FOG to `/opt/fog` and run official `installfog.sh` |
 | `scripts/jog-copy-signed-ubuntu-efi-to-tftpboot.sh` | Stage shim/grub signed EFI under `/tftpboot/ubuntu-signed/` |
 | `scripts/jog-provision-stack.sh` | EFI + dnsmasq + start FOG install (wizard / optional manual) |
+| `scripts/jog-setup-reliable-kiosk.sh` | **`jog-setup-reliable-kiosk.sh`**: ubuntu-xorg + LightDM + Chromium for Intel kiosk |
 | `systemd/jog-fog-install.service` | One-shot native FOG via `jog-fog-install-once.sh` |
 | `.env.example` | Optional `FOG_GIT_REF` for pinning the fogproject clone |
 | `config/jog.env.example` | USB-only DHCP + kiosk URLs → `/etc/jog/jog.env` |
@@ -125,7 +125,7 @@ sudo nano /etc/lightdm/lightdm.conf.d/50-jog-autologin.conf
 | `installer/` | Autoinstall + seed ISO builder + `jog-install-wizard` |
 | `installer/UBUNTU_RELEASE` | Pinned Ubuntu series (**26.04**) |
 | `installer/fetch-ubuntu-live-server-iso.sh` | Downloads official `ubuntu-26.04-live-server-amd64.iso` |
-| `docs/ISO-BUILD.md` | How to combine Ubuntu Server ISO + JOG seed |
+| `docs/ISO-BUILD.md` | ISO builds (two-disc wizard vs single Hyper-V), kiosk (**`jog-setup-reliable-kiosk.sh`**) |
 | `docs/CLUSTER.md` | Multi-node patterns and limits |
 | `cluster/jog-node-role.env.example` | Edge vs standalone hints |
 

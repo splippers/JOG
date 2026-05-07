@@ -9,6 +9,23 @@ log() { echo "[JOG-UNATTENDED] $*"; }
 [[ -f /etc/jog/unattended.active ]] || exit 0
 [[ -f /etc/jog/wizard.done ]] && exit 0
 
+# Install packages that used to be autoinstall `packages:` here — after DHCP still works and before we
+# replace netplan with the isolated imaging subnet (no default route to Ubuntu mirrors).
+if command -v apt-get >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq || log "WARNING: apt-get update failed (offline or no DNS?)"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y dialog dnsmasq git curl openssl xorriso || \
+    log "WARNING: apt install of JOG prerequisites failed — check outbound HTTPS/DNS before static netplan"
+fi
+
+REPO="${JOG_REPO:-/opt/JOG}"
+if [[ ! -x "${REPO}/install/jog-install.sh" ]]; then
+  log "JOG checkout missing — cloning into ${REPO}"
+  install -d "$(dirname "$REPO")"
+  rm -rf "$REPO"
+  git clone --depth 1 https://github.com/splippers/JOG.git "$REPO" || \
+    { log "ERROR: git clone failed — need outbound HTTPS for github.com"; exit 1; }
+fi
+
 IFACE=""
 while read -r _dev _st _; do
   case "$_dev" in lo) continue ;; esac
@@ -27,9 +44,6 @@ NEXT_SERVER="${JOG_UNATTEND_NEXT_SERVER:-$IMAGING_IP}"
 FOG_BOOTFILE="${JOG_UNATTEND_DHCP_BOOTFILE:-snponly.efi}"
 NETMASK="${JOG_UNATTEND_NETMASK:-255.255.255.0}"
 
-REPO="${JOG_REPO:-/opt/JOG}"
-[[ -d "$REPO" ]] || { log "missing JOG repo at ${REPO}"; exit 1; }
-
 install -d /etc/jog
 cat >/etc/jog/jog.env <<EOF
 JOG_USB_IFACE=${IFACE}
@@ -42,8 +56,8 @@ JOG_DHCP_LEASE_HOURS=12
 JOG_DHCP_ROUTER=${ROUTER}
 JOG_NEXT_SERVER=${NEXT_SERVER}
 JOG_DHCP_BOOTFILE=${FOG_BOOTFILE}
-JOG_FOG_URL=http://127.0.0.1/
-JOG_FOG_TASKS_URL=http://127.0.0.1/fog/management/index.php
+JOG_FOG_URL=http://localhost/fog/management/
+JOG_FOG_TASKS_URL=
 JOG_STATUS_URL=file:///var/lib/jog/status/index.html
 EOF
 chmod 0644 /etc/jog/jog.env

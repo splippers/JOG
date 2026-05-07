@@ -23,6 +23,7 @@ install -m 0755 "${ROOT}/scripts/jog-sync-images-from-primary.sh" /usr/local/bin
 install -m 0755 "${ROOT}/install/fog-native-install.sh" /usr/local/sbin/fog-native-install.sh
 install -m 0755 "${ROOT}/scripts/jog-copy-signed-ubuntu-efi-to-tftpboot.sh" /usr/local/sbin/jog-copy-signed-ubuntu-efi-to-tftpboot.sh
 install -m 0755 "${ROOT}/scripts/jog-provision-stack.sh" /usr/local/sbin/jog-provision-stack.sh
+install -m 0755 "${ROOT}/scripts/jog-setup-reliable-kiosk.sh" /usr/local/sbin/jog-setup-reliable-kiosk.sh
 install -m 0755 "${ROOT}/scripts/jog-fog-install-once.sh" /usr/local/sbin/jog-fog-install-once.sh
 
 install -m 0644 "${ROOT}/systemd/jog-refresh-status.service" /etc/systemd/system/jog-refresh-status.service
@@ -47,5 +48,5 @@ fi
 echo "Done. Next:"
 echo "  1) Run: sudo jog-install-wizard   (applies EFI → /tftpboot, dnsmasq, starts native FOG in background)."
 echo "  2) Or edit /etc/jog/jog.env then: sudo jog-provision-stack.sh"
-echo "  3) Install Chromium if needed: sudo apt install -y chromium-browser || sudo apt install -y chromium"
+echo "  3) Graphical kiosk (X11 + LightDM + Chromium): sudo jog-setup-reliable-kiosk.sh jogadmin && sudo reboot"
 echo "  4) Log into graphical session — Chromium autostarts from /etc/xdg/autostart/"

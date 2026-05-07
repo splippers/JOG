@@ -2,6 +2,6 @@
 Type=Application
 Name=JOG Chromium
 Comment=FOG UI + imaging/system status tabs
-Exec=/usr/local/bin/chromium-jog.sh
+Exec=env GDK_BACKEND=x11 /usr/local/bin/chromium-jog.sh
 X-GNOME-Autostart-enabled=true
 Terminal=false

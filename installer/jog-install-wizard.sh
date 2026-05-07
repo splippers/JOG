@@ -160,8 +160,8 @@ JOG_DHCP_LEASE_HOURS=12
 JOG_DHCP_ROUTER=${ROUTER}
 JOG_NEXT_SERVER=${NEXT_SERVER}
 JOG_DHCP_BOOTFILE=snponly.efi
-JOG_FOG_URL=http://127.0.0.1/
-JOG_FOG_TASKS_URL=http://127.0.0.1/fog/management/index.php
+JOG_FOG_URL=http://localhost/fog/management/
+JOG_FOG_TASKS_URL=
 JOG_STATUS_URL=file:///var/lib/jog/status/index.html
 EOF
 
