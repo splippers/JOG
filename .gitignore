@@ -32,3 +32,6 @@ installer/build/
 third-party/
 thirdparty/
 vendor/
+
+# Local rolling log (FLINTNEEDLE / CSOP); not committed
+TRANSCRIPT.md
